@@ -21,8 +21,10 @@ body{margin:0}
   color-scheme:dark;
 }
 [hidden]{display:none!important}
-html,body{height:100%}
+html,body{height:100%; overscroll-behavior:none}
+html{touch-action:manipulation; -webkit-text-size-adjust:100%}
 body{
+  -webkit-touch-callout:none;
   background:var(--ink); color:var(--paper); font-family:var(--term); font-size:20px;
   box-sizing:border-box; min-height:100%;
   padding-left:max(16px, env(safe-area-inset-left,0px));
@@ -65,8 +67,10 @@ h2{margin:0; font-family:var(--pixel); font-weight:400; font-size:clamp(12px,3.4
 .levels .btn{text-align:left}
 #hud{
   position:absolute; top:1.6cqw; left:1.8cqw; right:1.8cqw; display:flex; justify-content:space-between; align-items:center;
-  font-family:var(--pixel); font-size:clamp(7px,1.25cqw,12px); pointer-events:none; text-shadow:0 2px 0 #000;
+  font-family:var(--pixel); font-size:clamp(7px,1.25cqw,12px); pointer-events:none; text-shadow:0 2px 0 #000; gap:.6em;
 }
+#hud > .row{flex:none; flex-wrap:nowrap}
+#hudLevel{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 #hud .tag{background:rgba(23,13,34,.75); padding:.6em .8em; border:2px solid var(--line)}
 #hud .hearts{color:var(--neon)}
 #mute{pointer-events:auto; font-family:var(--pixel); font-size:inherit; background:rgba(23,13,34,.75); color:var(--paper); border:2px solid var(--line); padding:.6em .8em; cursor:pointer}
@@ -102,7 +106,33 @@ h2{margin:0; font-family:var(--pixel); font-weight:400; font-size:clamp(12px,3.4
 #touch button.on{background:var(--line)}
 #touch .jump{width:96px; background:var(--neon-deep); border-color:var(--neon)}
 .hint{margin:0; font-size:18px; color:var(--muted); text-align:center}
-@media (pointer:coarse){ #touch{display:flex} .hint.keys{display:none} }
+.hint.touchhint, .hint.rotate{display:none}
+@media (pointer:coarse){
+  #touch{display:flex} .hint.keys{display:none} .hint.touchhint{display:block}
+}
+/* Celular em pé: jogo no meio, controles grandes embaixo, perto do polegar */
+@media (pointer:coarse) and (orientation:portrait){
+  body{padding-top:max(12px, env(safe-area-inset-top,0px)); padding-bottom:max(16px, env(safe-area-inset-bottom,0px))}
+  #frame{margin-top:auto}
+  .hint.rotate{display:block; font-size:16px}
+  #touch{margin-top:auto}
+  #touch button{width:84px; height:84px; font-size:22px}
+  #touch .jump{width:112px}
+}
+/* Celular deitado: jogo ocupa a altura toda, controles nas laterais */
+@media (pointer:coarse) and (orientation:landscape){
+  body{
+    display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:end; column-gap:12px;
+    height:100dvh; min-height:0; overflow:hidden;
+    padding-top:max(8px, env(safe-area-inset-top,0px)); padding-bottom:max(8px, env(safe-area-inset-bottom,0px));
+  }
+  #frame{grid-column:2; grid-row:1; align-self:center; justify-self:center; min-width:0; width:min(100%, calc((100dvh - 24px) * 16 / 9))}
+  #touch{display:contents}
+  #touch .pad{grid-column:1; grid-row:1; gap:8px}
+  #touch .jump{grid-column:3; grid-row:1}
+  #touch button{width:62px; height:72px}
+  #touch .jump{width:80px; height:96px}
+}
 @media (prefers-reduced-motion:reduce){ #dialog .more{animation:none} }
 </style>
 </head>
@@ -127,8 +157,10 @@ h2{margin:0; font-family:var(--pixel); font-weight:400; font-size:clamp(12px,3.4
     <div class="row">
       <button class="btn" id="btnPlay" type="button">Jogar</button>
       <button class="btn alt" id="btnLevels" type="button">Fases</button>
+      <button class="btn alt" id="btnFull" type="button" hidden>Tela cheia</button>
     </div>
     <p class="small hint keys">← → andar · espaço pular · enter avança</p>
+    <p class="small hint touchhint">◀ ▶ andar · ▲ pular · toque pra avançar</p>
   </div>
 
   <div class="screen" id="select" hidden>
@@ -158,6 +190,7 @@ h2{margin:0; font-family:var(--pixel); font-weight:400; font-size:clamp(12px,3.4
     <button class="btn" id="btnAgain" type="button">Jogar de novo</button>
   </div>
 </div>
+<p class="hint rotate">Dica: deite o celular pra ver o jogo maior.</p>
 
 <div id="touch">
   <div class="pad">
@@ -438,6 +471,14 @@ $('btnStart').onclick = startPlay;
 $('btnAgain').onclick = () => { totalHearts = 0; loadLevel(0); };
 $('mute').onclick = e => { muted = !muted; e.currentTarget.textContent = muted ? 'SOM OFF' : 'SOM ON'; e.currentTarget.blur(); };
 $('dialog').addEventListener('click', e => { if (!e.target.closest('button')) advance(); });
+const root = document.documentElement;
+if (root.requestFullscreen && matchMedia('(pointer:coarse)').matches){
+  $('btnFull').hidden = false;
+  $('btnFull').onclick = () => root.requestFullscreen()
+    .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'))
+    .catch(() => {});
+  document.addEventListener('fullscreenchange', () => { $('btnFull').hidden = !!document.fullscreenElement; });
+}
 
 /* ---------- level flow ---------- */
 function loadLevel(i){
@@ -495,7 +536,8 @@ function typingDone(){
           if (e) e.preventDefault();
           tries++;
           if (tries > 7){ b.textContent = 'Sim!'; b.style.transform = ''; b.onclick = () => { sLove(); nextLine(); }; return; }
-          b.style.transform = `translate(${Math.round((Math.random()-.5)*220)}px, ${Math.round(-Math.random()*90)}px)`;
+          const fw = $('frame').clientWidth;
+          b.style.transform = `translate(${Math.round((Math.random()-.5)*fw*.2)}px, ${Math.round(-Math.random()*fw*.08)}px)`;
           snd(600,300,.08,'square',.03);
         };
         b.addEventListener('pointerenter', flee); b.addEventListener('pointerdown', flee);
@@ -1032,7 +1074,10 @@ addEventListener('blur', () => { keys.left = keys.right = keys.jump = false; });
 document.querySelectorAll('#touch button').forEach(b => {
   const k = b.dataset.k;
   const down = e => {
-    e.preventDefault(); b.classList.add('on');
+    e.preventDefault();
+    // solta a captura do toque pra o dedo poder deslizar de ◀ pra ▶ sem levantar
+    if (b.hasPointerCapture(e.pointerId)) b.releasePointerCapture(e.pointerId);
+    b.classList.add('on');
     if (k === 'jump'){
       if (state === 'dialog'){ advance(); return; }
       if (state === 'card'){ startPlay(); return; }
@@ -1042,6 +1087,7 @@ document.querySelectorAll('#touch button').forEach(b => {
   };
   const up = e => { e.preventDefault(); b.classList.remove('on'); keys[k] = false; };
   b.addEventListener('pointerdown', down);
+  b.addEventListener('pointerenter', e => { if (e.buttons && k !== 'jump') down(e); });
   b.addEventListener('pointerup', up);
   b.addEventListener('pointercancel', up);
   b.addEventListener('pointerleave', up);
